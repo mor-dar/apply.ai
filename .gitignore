@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local
+convenience_installs.sh
+.claude
+.devcontainer
+.vscode
+publication
