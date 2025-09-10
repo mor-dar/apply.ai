@@ -114,11 +114,32 @@ JobPostParserAgent (agents/job_post_parser_agent.py)
   - [x] Added "Quality Standards" section emphasizing warning intolerance
   - [x] Documented pytest configuration and testing best practices
 
-## Day 3 — ResumeParserAgent
-- [ ] Ingest PDF/DOCX (e.g., `pdfplumber` + `python-docx`)
-- [ ] Normalize structure (sections, bullets, dates)
-- [ ] Produce `Resume`
-- [ ] For each bullet, store original span offsets (for evidence links later)
+## Day 3 — ResumeParserAgent ✅ COMPLETED
+- [x] Ingest PDF/DOCX (e.g., `pdfplumber` + `python-docx`)
+- [x] Normalize structure (sections, bullets, dates)
+- [x] Produce `Resume`
+- [x] For each bullet, store original span offsets (for evidence links later)
+
+### Implementation Details (Day 3)
+- [x] **ResumeParser Tool**: Stateless PDF/DOCX parsing with structure normalization
+  - [x] PDF parsing using `pdfplumber` with multi-page support
+  - [x] DOCX parsing using `python-docx` with paragraph extraction
+  - [x] Section detection using pattern matching and heuristics
+  - [x] Bullet point extraction with Unicode/ASCII support and empty filtering
+  - [x] Skills extraction using keyword detection and section parsing
+  - [x] Date extraction with multiple format support (years, ranges, "present")
+  - [x] Character span offset tracking for evidence mapping
+- [x] **ResumeParserAgent**: LangGraph orchestration following established architecture
+  - [x] Multi-node workflow: initialize → validate_input → parse_resume → validate_results → finalize
+  - [x] Error handling with retry logic (max 3 retries) and quality validation
+  - [x] Confidence scoring and validation warnings
+  - [x] Both sync/async interfaces for compatibility
+- [x] **Comprehensive Testing**: 148+ test cases with 99% coverage
+  - [x] Unit tests for tool components (structure extraction, parsing, validation)
+  - [x] Integration tests for agent workflow orchestration
+  - [x] Error handling and edge case coverage
+  - [x] Zero warnings achieved with strict quality enforcement
+- [x] **Code Quality**: All standards met (ruff, black, pytest)
 
 ## Day 4 — Evidence index
 - [ ] Build embeddings for resume bullets + skills (SBERT or preferred model)

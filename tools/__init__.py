@@ -7,5 +7,6 @@ for orchestration within the LangGraph workflow.
 """
 
 from .job_posting_parser import JobPostingParser
+from .resume_parser import ResumeParser
 
-__all__ = ["JobPostingParser"]
+__all__ = ["JobPostingParser", "ResumeParser"]
