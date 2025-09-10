@@ -21,6 +21,7 @@ from src.schemas.core import (
     CompBand,
     Metrics,
     SourceDomainClass,
+    Requirement,
 )
 
 
@@ -29,13 +30,17 @@ class TestJobPosting:
 
     def test_valid_job_posting(self):
         """Test creation of valid JobPosting instance."""
+        requirements = [
+            Requirement(text="5+ years experience", must_have=True),
+            Requirement(text="Bachelor's degree", must_have=True),
+        ]
         job = JobPosting(
             title="Senior Software Engineer",
             company="TechCorp",
             location="San Francisco, CA",
             text="We are looking for a senior software engineer...",
             keywords=["Python", "Django", "PostgreSQL"],
-            requirements=["5+ years experience", "Bachelor's degree"],
+            requirements=requirements,
         )
 
         assert job.title == "Senior Software Engineer"
@@ -43,6 +48,7 @@ class TestJobPosting:
         assert job.location == "San Francisco, CA"
         assert len(job.keywords) == 3
         assert len(job.requirements) == 2
+        assert all(isinstance(req, Requirement) for req in job.requirements)
 
     def test_minimal_job_posting(self):
         """Test JobPosting with only required fields."""
@@ -68,16 +74,22 @@ class TestJobPosting:
 
     def test_keywords_requirements_whitespace_cleaning(self):
         """Test that empty and whitespace-only entries are cleaned."""
+        requirements = [
+            Requirement(text="5 years", must_have=True),
+            Requirement(text="Degree", must_have=True),
+        ]
         job = JobPosting(
             title="Engineer",
             company="Company",
             text="Description",
             keywords=["Python", "  ", "", "Django", "   React   "],
-            requirements=["", "5 years", "  ", "Degree", "   "],
+            requirements=requirements,
         )
 
         assert job.keywords == ["Python", "Django", "React"]
-        assert job.requirements == ["5 years", "Degree"]
+        assert len(job.requirements) == 2
+        assert job.requirements[0].text == "5 years"
+        assert job.requirements[1].text == "Degree"
 
 
 class TestResumeBullet:
@@ -668,13 +680,18 @@ class TestSchemaIntegration:
     def test_complete_application_workflow(self):
         """Test creating instances of all schemas in a realistic workflow."""
         # Job posting
+        requirements = [
+            Requirement(text="5+ years Python", must_have=True),
+            Requirement(text="Django framework", must_have=True),
+            Requirement(text="Database design", must_have=True),
+        ]
         job = JobPosting(
             title="Senior Python Developer",
             company="TechCorp",
             location="San Francisco, CA",
             text="We seek a senior Python developer with Django experience...",
             keywords=["Python", "Django", "PostgreSQL", "REST API"],
-            requirements=["5+ years Python", "Django framework", "Database design"],
+            requirements=requirements,
         )
 
         # Resume

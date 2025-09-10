@@ -41,3 +41,30 @@ cd apply.ai
 python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -U pip
 pip install -r requirements.txt
+```
+
+```mermaid
+flowchart LR
+    JD[JD Parser] --> R[Researcher → FactSheet]
+    RES[Resume Parser] --> IX[Index Builder - Resume-only]
+
+    IX --> M[Evidence Matcher]
+    JD --> M
+    R --> M
+
+    M --> E[Resume Writer]
+    JD --> E
+    R --> E
+
+    E --> G[Honesty Verifier - Guard]
+    G -->|approved| CL[Cover Letter Writer/Guard]
+    R --> CL
+
+    JD --> D[Compensation - US MVP]
+
+    G -->|rejected| E
+    CL --> P[ATS Formatter & Packager]
+    D --> P
+    P --> DL[Download Pack]
+
+```

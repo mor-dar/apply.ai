@@ -10,6 +10,7 @@ from typing import List, Optional
 from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator, HttpUrl
+from uuid import uuid4
 
 
 class SourceDomainClass(str, Enum):
@@ -18,6 +19,39 @@ class SourceDomainClass(str, Enum):
     OFFICIAL = "official"  # Company websites, official documentation
     REPUTABLE_NEWS = "reputable_news"  # Major news outlets
     OTHER = "other"  # Other sources
+
+
+class Requirement(BaseModel):
+    """Individual job requirement with classification and rationale."""
+
+    id: str = Field(
+        default_factory=lambda: str(uuid4())[:8], description="Unique requirement ID"
+    )
+    text: str = Field(..., description="Requirement text")
+    must_have: bool = Field(
+        True, description="Whether this is a must-have vs nice-to-have requirement"
+    )
+    rationale: Optional[str] = Field(
+        None, description="Why this was classified as must-have/nice-to-have"
+    )
+
+
+class ParserReport(BaseModel):
+    """Report on parsing quality and confidence."""
+
+    confidence: float = Field(
+        ..., ge=0.0, le=1.0, description="Overall parsing confidence score"
+    )
+    missing_fields: List[str] = Field(
+        default_factory=list,
+        description="Required fields that are missing or low confidence",
+    )
+    warnings: List[str] = Field(
+        default_factory=list, description="Warnings about parsing quality or content"
+    )
+    keyword_count: int = Field(0, description="Number of keywords extracted")
+    requirement_count: int = Field(0, description="Number of requirements extracted")
+    text_length: int = Field(0, description="Length of input text")
 
 
 class JobPosting(BaseModel):
@@ -30,7 +64,7 @@ class JobPosting(BaseModel):
     keywords: List[str] = Field(
         default_factory=list, description="Extracted keywords ranked by importance"
     )
-    requirements: List[str] = Field(
+    requirements: List[Requirement] = Field(
         default_factory=list, description="Extracted requirements and qualifications"
     )
 
@@ -41,10 +75,16 @@ class JobPosting(BaseModel):
             raise ValueError("Job description text too long")
         return v
 
-    @field_validator("keywords", "requirements")
+    @field_validator("keywords")
     @classmethod
-    def validate_lists_not_empty_strings(cls, v):
-        return [item.strip() for item in v if item.strip()]
+    def validate_keywords(cls, v):
+        return [item.strip() for item in v if isinstance(item, str) and item.strip()]
+
+    @field_validator("requirements")
+    @classmethod
+    def validate_requirements(cls, v):
+        # Requirements are now Requirement objects, not strings
+        return v
 
 
 class ResumeBullet(BaseModel):
