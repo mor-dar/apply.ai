@@ -76,3 +76,4 @@ gradio>=4.44.1,<5
 
 # Performance monitoring (optional)
 psutil==5.9.8
+fuzzywuzzy[speedup]==0.18.0

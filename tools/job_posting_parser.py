@@ -128,9 +128,9 @@ class JobPostingParser:
 
         Args:
             job_text: Raw job description text
-            title: Job title (optional)
-            company: Company name (optional)
-            location: Job location (optional)
+            title: Job title (optional, will be auto-extracted if not provided)
+            company: Company name (optional, will be auto-extracted if not provided)
+            location: Job location (optional, will be auto-extracted if not provided)
 
         Returns:
             Tuple of (JobPosting, ParserReport) with extracted data and quality metrics
@@ -141,7 +141,15 @@ class JobPostingParser:
         if not isinstance(job_text, str):
             raise ValueError("job_text must be a string")
 
-        # Clean and preprocess text
+        # Auto-extract basic info from original text (before cleaning removes line structure)
+        if not title or not title.strip():
+            title = self._extract_job_title(job_text)
+        if not company or not company.strip():
+            company = self._extract_company_name(job_text)
+        if not location or not location.strip():
+            location = self._extract_location(job_text)
+
+        # Clean and preprocess text for keyword/requirement extraction
         cleaned_text = self._clean_text(job_text)
 
         # Extract requirements and keywords
@@ -680,3 +688,220 @@ class JobPostingParser:
             requirement_count=requirement_count,
             text_length=text_length,
         )
+
+    def _extract_job_title(self, text: str) -> str:
+        """Extract job title from job description text."""
+        lines = text.split("\n")
+
+        # Pattern 1: Direct labels like "Job Title:", "Position:", "Role:"
+        title_patterns = [
+            r"(?:job\s+title|position|role|title)\s*[:]\s*(.+)",
+            r"we\s+are\s+looking\s+for\s+an?\s+(.+?)\s+to\s+(?:lead|join|manage)",  # "We are looking for an X to..."
+            r"looking\s+for\s+an?\s+(.+?)\s+to\s+(?:lead|join|manage)",  # "looking for an X to..."
+            r"seeking\s+an?\s+(?:experienced\s+)?(?:and\s+passionate\s+)?(.+?)\s+to\s+(?:join|lead)",  # "seeking an X to join"
+            r"(?:we(?:\s+are)?\s+(?:looking\s+for|seeking|hiring)|(?:recruiting\s+for|hiring))(?:\s+(?:a|an))?\s+(.+?)(?:\s+position|\s+to\s+|\s+who\s+|\.|$)",
+            r"(?:the\s+role|about\s+the\s+role)\s*[:\n]\s*(.+?)(?:\n|$)",
+            r"recruiting\s+for\s+(?:a|an)\s+(.+?)\s+position",  # Specific pattern for "recruiting for a/an X position"
+        ]
+
+        for pattern in title_patterns:
+            for line in lines[:15]:  # Check first 15 lines
+                match = re.search(pattern, line.strip(), re.IGNORECASE)
+                if match:
+                    title = match.group(1).strip()
+                    # Clean up common noise
+                    title = re.sub(
+                        r"\s*[-–—]\s*.+$", "", title
+                    )  # Remove everything after dash
+                    title = re.sub(
+                        r"\s*\([^)]*\)$", "", title
+                    )  # Remove parentheticals at end
+                    if len(title) > 3 and len(title) < 100:  # Reasonable title length
+                        return title
+
+        # Pattern 2: First non-empty line as potential title (common format)
+        for line in lines[:5]:
+            line = line.strip()
+            if line and len(line) > 3 and len(line) < 100:
+                # Skip lines that look like company names or contact info
+                if not re.search(
+                    r"@|www\.|http|\.com|Inc\.|Ltd\.|LLC|Corp\.|phone|email|address",
+                    line,
+                    re.IGNORECASE,
+                ):
+                    # Check if it looks like a job title
+                    if re.search(
+                        r"(?:engineer|developer|manager|director|analyst|specialist|coordinator|assistant|lead|senior|junior|head\s+of)",
+                        line,
+                        re.IGNORECASE,
+                    ):
+                        # Clean up common noise
+                        cleaned_title = re.sub(
+                            r"\s*[-–—]\s*.+$", "", line
+                        )  # Remove everything after dash
+                        cleaned_title = re.sub(
+                            r"\s*\([^)]*\)$", "", cleaned_title
+                        )  # Remove parentheticals at end
+                        return cleaned_title.strip()
+
+        # Pattern 3: Extract from common job posting structures
+        role_section_pattern = r"(?:the\s+role|position\s+summary|job\s+summary)[:\s]*\n(.+?)(?:\n\n|\n[A-Z])"
+        match = re.search(role_section_pattern, text, re.IGNORECASE | re.DOTALL)
+        if match:
+            content = match.group(1).strip()
+            # Look for title in the content
+            title_match = re.search(
+                r"(?:we(?:\s+are)?\s+(?:looking\s+for|seeking|hiring)(?:\s+a)?)\s+(.+?)(?:\s+to\s+|\s+who\s+|\.|$)",
+                content,
+                re.IGNORECASE,
+            )
+            if title_match:
+                title = title_match.group(1).strip()
+                if len(title) > 3 and len(title) < 100:
+                    return title
+
+        return ""  # Return empty if no title found
+
+    def _extract_company_name(self, text: str) -> str:
+        """Extract company name from job description text."""
+        lines = text.split("\n")
+
+        # Pattern 1: "Who is [Company]?" or "[Company] is..." patterns (high priority)
+        who_pattern = r"(?:who\s+is\s+|about\s+)([A-Z][a-zA-Z]+)(?:\?|$|\n)"
+        match = re.search(who_pattern, text, re.IGNORECASE | re.MULTILINE)
+        if match:
+            company = match.group(1).strip()
+            if len(company) > 2 and len(company) < 50:
+                return company
+
+        # Pattern 1b: "[Company] is..." at start of sentence (high priority)
+        company_is_pattern = r"(?:^|\n)\s*([A-Z][a-zA-Z]+)\s+is\s+(?:an?\s+)?(?:award\s+winning|leading|global|startup|start-up|company)"
+        match = re.search(company_is_pattern, text, re.IGNORECASE | re.MULTILINE)
+        if match:
+            company = match.group(1).strip()
+            if len(company) > 2 and len(company) < 50:
+                return company
+
+        # Pattern 2: First few lines often contain company name
+        for line in lines[:5]:
+            line = line.strip()
+            if line and len(line) > 2:
+                # Skip obvious non-company lines including copyright and About sections
+                if not re.search(
+                    r"@|phone|email|^looking\s+for|^we\s+are\s+(?:looking|hiring|seeking)|^job\s+title|^position|^role|©|copyright|all rights reserved|^about\s+",
+                    line,
+                    re.IGNORECASE,
+                ):
+                    # First priority: Check if this is the first line and extract first word as company
+                    if line == lines[0].strip():
+                        words = line.split()
+                        if words and len(words[0]) > 2:
+                            # Check if first word looks like a company name (not a common word)
+                            if not re.search(
+                                r"^(?:the|and|or|of|in|on|at|to|for|with|by|we|our|this|is|are|who)$",
+                                words[0],
+                                re.IGNORECASE,
+                            ):
+                                # Additional check: make sure the first word isn't itself a job title
+                                if not re.search(
+                                    r"^(?:engineer|developer|manager|director|position|role|job|vacancy|opportunity|senior|junior|lead)$",
+                                    words[0],
+                                    re.IGNORECASE,
+                                ):
+                                    return words[0]
+
+                    # Second priority: Look for company indicators and extract company name before them
+                    if re.search(
+                        r"\b(?:Inc\.|Ltd\.|LLC|Corp\.|Company|Technologies|Systems|Solutions)\b|\bGroup\b(?:\s*Inc\.|$)",
+                        line,
+                        re.IGNORECASE,
+                    ):
+                        # Extract just the company name from the line with indicators
+                        words = line.split()
+                        if words:
+                            # Try to extract company name before the indicator
+                            for i, word in enumerate(words):
+                                if re.search(
+                                    r"\b(?:Inc\.|Ltd\.|LLC|Corp\.|Company|Technologies|Systems|Solutions|Group)\b",
+                                    word,
+                                    re.IGNORECASE,
+                                ):
+                                    if (
+                                        i > 0
+                                    ):  # There's a company name before the indicator
+                                        company_words = words[:i]
+                                        company_name = " ".join(company_words)
+                                        if len(company_name) > 2:
+                                            return company_name
+                            # If we can't find the indicator in a single word, try first few words
+                            if len(words) >= 2:
+                                return words[0]  # Return first word as fallback
+
+        # Pattern 3: Email domain extraction
+        email_pattern = r"[\w\.-]+@([\w\.-]+\.\w+)"
+        email_matches = re.findall(email_pattern, text)
+        for domain in email_matches:
+            if not domain.lower().endswith(
+                (".gmail.com", ".yahoo.com", ".outlook.com", ".hotmail.com")
+            ):
+                # Extract company name from domain
+                company = domain.split(".")[0]
+                if len(company) > 2:
+                    return company.title()
+
+        # Pattern 3: Copyright or footer patterns
+        copyright_pattern = (
+            r"©.*?\d{4}\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)\s*(?:Inc\.|LLC|Corp\.|Ltd\.)"
+        )
+        match = re.search(copyright_pattern, text)
+        if match:
+            company = match.group(1).strip()
+            if len(company) > 2 and len(company) < 50:
+                return company + " Inc"  # Add back the indicator for completeness
+
+        # Pattern 4: "About [Company]" sections
+        about_pattern = r"about\s+([A-Za-z]+(?:\s+[A-Za-z]+)*?)(?:\n|$)"
+        match = re.search(about_pattern, text, re.IGNORECASE)
+        if match:
+            company = match.group(1).strip()
+            if (
+                len(company) > 2
+                and len(company) < 50
+                and not re.search(
+                    r"the\s+role|this\s+position|us", company, re.IGNORECASE
+                )
+            ):
+                return company
+
+        return ""  # Return empty if no company found
+
+    def _extract_location(self, text: str) -> str:
+        """Extract location from job description text."""
+        # Common location patterns (ordered by specificity)
+        location_patterns = [
+            r"location\s*[:]\s*(.+?)(?:\n|$)",
+            r"(?:located\s+in|based\s+in)\s+([A-Z][a-z]+-[A-Z][a-z]+)",  # Hyphenated cities like "Tel-Aviv" (high priority)
+            r"position\s+in\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*|[A-Z][a-z]+-[A-Z][a-z]+)\.?",  # "position in Location" including hyphenated
+            r"(?:group|team)\s+in\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\.?",  # "group in Location" or "team in Location"
+            r"(?:based\s+in|located\s+in)\s+(.+?)(?:\s+with|\s+to|\s+and|\s+in\s+|\.|$)",  # Remove comma, stop at connecting words
+            r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})(?:\s|$)",  # City, State format
+            r"(remote|hybrid|on-site)(?:\s+available|\s+work|\s+position)?",
+            r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z][a-z]+)(?:\s|$)",  # City, Country format (moved last)
+        ]
+
+        for pattern in location_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                if isinstance(match, tuple):
+                    location = ", ".join(match).strip()
+                else:
+                    location = match.strip()
+
+                if len(location) > 2 and len(location) < 100:
+                    # Clean up common noise
+                    location = re.sub(
+                        r"\s*\([^)]*\)$", "", location
+                    )  # Remove parentheticals
+                    return location
+
+        return ""  # Return empty if no location found

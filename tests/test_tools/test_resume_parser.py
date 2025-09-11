@@ -396,6 +396,47 @@ May 2022 - current
         dates = parser._extract_dates(text)
         assert dates == []
 
+    def test_extract_dates_filters_phone_numbers(self, parser):
+        """Test that date extraction filters out phone number digits."""
+        text = """
+        John Doe
+        Phone: (555) 123-4567
+        Email: john@example.com
+        Experience: 2020 - Present
+        Education: 2018 - 2022
+        Additional info: Tel: 555-321-9876
+        """
+        dates = parser._extract_dates(text)
+
+        # Should find valid years but not phone number digits
+        assert "2020" in dates
+        assert "2018" in dates
+        assert "2022" in dates
+        assert "2020 - Present" in dates or "2018 - 2022" in dates
+
+        # Should NOT find phone number digits
+        assert "4567" not in dates
+        assert "9876" not in dates
+        assert "1234" not in dates  # Part of 123-4567
+
+    def test_extract_dates_filters_invalid_years(self, parser):
+        """Test that date extraction filters out invalid years."""
+        text = """
+        Valid years: 2020, 1995, 2025
+        Invalid years: 1800, 2150, 0123, 9999
+        """
+        dates = parser._extract_dates(text)
+
+        # Should find valid years
+        assert "2020" in dates
+        assert "1995" in dates
+        assert "2025" in dates
+
+        # Should NOT find invalid years (outside 1900-2099 range)
+        assert "1800" not in dates
+        assert "2150" not in dates
+        assert "9999" not in dates
+
     # Confidence calculation tests
     def test_calculate_confidence_full_resume(self, parser, sample_resume_text):
         """Test confidence calculation for full resume."""

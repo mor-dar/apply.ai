@@ -599,3 +599,157 @@ class TestJobPostingParserCoverageEdgeCases:
         assert (
             warning_found
         ), f"Expected keyword warning not found in: {parser_report.warnings}"
+
+    # Title/Company extraction tests
+    def test_extract_job_title_direct_patterns(self, parser):
+        """Test title extraction with direct labeling patterns."""
+        test_cases = [
+            ("Job Title: Senior Software Engineer", "Senior Software Engineer"),
+            ("Position: Head of AI", "Head of AI"),
+            ("Role: Data Scientist", "Data Scientist"),
+            ("We are looking for a Backend Developer", "Backend Developer"),
+            (
+                "We are seeking a Frontend Engineer to join our team.",
+                "Frontend Engineer",
+            ),
+            ("The Role\nWe are hiring a DevOps Engineer", "DevOps Engineer"),
+        ]
+
+        for job_text, expected_title in test_cases:
+            extracted_title = parser._extract_job_title(job_text)
+            assert (
+                extracted_title == expected_title
+            ), f"Expected '{expected_title}', got '{extracted_title}' for text: {job_text}"
+
+    def test_extract_job_title_first_line_patterns(self, parser):
+        """Test title extraction from first line patterns."""
+        test_cases = [
+            (
+                "Senior Software Engineer\nTechCorp Inc.\nRemote",
+                "Senior Software Engineer",
+            ),
+            (
+                "Head of AI - Backend Systems\nScaleOps",
+                "Head of AI",
+            ),  # Tests dash cleanup
+            (
+                "Machine Learning Engineer (Remote)\nAI Company",
+                "Machine Learning Engineer",
+            ),  # Tests parenthetical cleanup
+        ]
+
+        for job_text, expected_title in test_cases:
+            extracted_title = parser._extract_job_title(job_text)
+            assert (
+                extracted_title == expected_title
+            ), f"Expected '{expected_title}', got '{extracted_title}' for text: {job_text}"
+
+    def test_extract_company_name_various_patterns(self, parser):
+        """Test company name extraction with various patterns."""
+        test_cases = [
+            ("ScaleOps Inc.\nHead of AI\nRemote", "ScaleOps Inc."),
+            ("TechCorp\nSenior Engineer\nSan Francisco, CA", "TechCorp"),
+            ("Contact us at jobs@scaleops.com", "Scaleops"),  # Email domain extraction
+            (
+                "© 2024 TechCorp Inc. All rights reserved.",
+                "TechCorp Inc",
+            ),  # Copyright pattern
+            (
+                "About ScaleOps\nWe are a leading company...",
+                "ScaleOps",
+            ),  # About section
+        ]
+
+        for job_text, expected_company in test_cases:
+            extracted_company = parser._extract_company_name(job_text)
+            assert (
+                extracted_company == expected_company
+            ), f"Expected '{expected_company}', got '{extracted_company}' for text: {job_text}"
+
+    def test_extract_location_patterns(self, parser):
+        """Test location extraction with various patterns."""
+        test_cases = [
+            ("Location: San Francisco, CA", "San Francisco, CA"),
+            ("Based in New York, NY", "New York, NY"),
+            ("Located in London, UK", "London, UK"),
+            ("Remote available", "remote"),
+            ("Hybrid work", "hybrid"),
+        ]
+
+        for job_text, expected_location in test_cases:
+            extracted_location = parser._extract_location(job_text)
+            assert (
+                extracted_location.lower() == expected_location.lower()
+            ), f"Expected '{expected_location}', got '{extracted_location}' for text: {job_text}"
+
+    def test_auto_extraction_integration(self, parser):
+        """Test full auto-extraction in parse() method."""
+        job_text = """Senior Software Engineer - Backend Systems
+TechCorp Inc.
+San Francisco, CA (Remote Available)
+
+About the Role:
+We are seeking a highly skilled Senior Software Engineer to join our backend systems team.
+
+Requirements:
+- 5+ years of experience in backend development
+- Strong skills in Python and Java
+"""
+
+        # Test with empty title/company parameters (should auto-extract)
+        job_posting, parser_report = parser.parse(job_text)
+
+        assert job_posting.title == "Senior Software Engineer"
+        assert job_posting.company == "TechCorp Inc."
+        assert "San Francisco, CA" in job_posting.location
+
+        # Verify missing fields warnings are not present
+        assert "title" not in parser_report.missing_fields
+        assert "company" not in parser_report.missing_fields
+
+    def test_scaleops_real_world_example(self, parser):
+        """Test extraction with the actual ScaleOps job description."""
+        job_text = """ScaleOps is the leader in real-time automated cloud resource management, helping enterprises revolutionize the way they manage cloud-native application infrastructures. Our platform dynamically allocates application resources, delivering up to 80% in cloud cost savings while boosting performance and eliminating manual intervention. With $80M+ in backing and over 50 global enterprise customers (including Wiz, SentinelOne, Orca Security, and Playtika), ScaleOps is scaling fast – and now, we are expanding into AI.
+
+The Role
+
+We are looking for a Head of AI to lead and shape the company's AI strategy and execution. This is a unique opportunity to take ownership of AI initiatives across multiple areas of the product and define how AI will power the next stage of ScaleOps's growth.
+"""
+
+        # Test title extraction
+        title = parser._extract_job_title(job_text)
+        assert title == "Head of AI", f"Expected 'Head of AI', got '{title}'"
+
+        # Test company extraction
+        company = parser._extract_company_name(job_text)
+        assert company == "ScaleOps", f"Expected 'ScaleOps', got '{company}'"
+
+        # Test full parsing
+        job_posting, parser_report = parser.parse(job_text)
+        assert job_posting.title == "Head of AI"
+        assert job_posting.company == "ScaleOps"
+
+        # Should not have missing title/company warnings
+        missing_fields = parser_report.missing_fields
+        assert (
+            "title" not in missing_fields
+        ), f"Title should be extracted, missing_fields: {missing_fields}"
+        assert (
+            "company" not in missing_fields
+        ), f"Company should be extracted, missing_fields: {missing_fields}"
+
+    def test_extraction_fallback_behavior(self, parser):
+        """Test fallback to provided parameters when extraction fails."""
+        job_text = "Generic job description with no clear title or company information."
+
+        # When auto-extraction fails, should use provided parameters
+        job_posting, _ = parser.parse(
+            job_text, title="Provided Title", company="Provided Company"
+        )
+        assert job_posting.title == "Provided Title"
+        assert job_posting.company == "Provided Company"
+
+        # When auto-extraction fails and no parameters provided, should use defaults
+        job_posting, _ = parser.parse(job_text)
+        assert job_posting.title == "Unknown Position"
+        assert job_posting.company == "Unknown Company"
