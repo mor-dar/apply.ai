@@ -414,9 +414,57 @@ class ResumeParser:
         for pattern in self.date_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for match in matches:
-                dates.add(match.strip())
+                cleaned_match = match.strip()
+
+                # Validate 4-digit years to filter out phone numbers and invalid years
+                if self._is_valid_date_match(cleaned_match, text):
+                    dates.add(cleaned_match)
 
         return sorted(list(dates))
+
+    def _is_valid_date_match(self, match: str, full_text: str) -> bool:
+        """Validate if a date match is actually a date and not part of phone number."""
+        # For simple 4-digit patterns, validate they are reasonable years
+        if re.match(r"^\d{4}$", match):
+            year = int(match)
+
+            # Only accept years between 1900-2099
+            if not (1900 <= year <= 2099):
+                return False
+
+            # Check if this 4-digit number is part of a phone number pattern
+            if self._is_part_of_phone_number(match, full_text):
+                return False
+
+        return True
+
+    def _is_part_of_phone_number(self, match: str, full_text: str) -> bool:
+        """Check if a 4-digit match is part of a phone number."""
+        # Find all occurrences of this match in the text
+        for match_obj in re.finditer(re.escape(match), full_text):
+            start_pos = match_obj.start()
+            end_pos = match_obj.end()
+
+            # Look at surrounding context (±10 characters)
+            context_start = max(0, start_pos - 10)
+            context_end = min(len(full_text), end_pos + 10)
+            context = full_text[context_start:context_end]
+
+            # Common phone number patterns around our 4-digit match
+            phone_patterns = [
+                r"\(\d{3}\)\s*\d{3}[-\s]*" + re.escape(match),  # (555) 123-4567
+                r"\d{3}[-\s]*\d{3}[-\s]*"
+                + re.escape(match),  # 555-123-4567 or 555 123 4567
+                re.escape(match) + r"[-\s]*\w+@",  # 4567@email.com (unlikely but check)
+                r"Phone:?\s*[(\d\s\-)*]*" + re.escape(match),  # Phone: ... 4567
+                r"Tel:?\s*[(\d\s\-)*]*" + re.escape(match),  # Tel: ... 4567
+            ]
+
+            for pattern in phone_patterns:
+                if re.search(pattern, context, re.IGNORECASE):
+                    return True
+
+        return False
 
     def _calculate_confidence(self, resume: Resume) -> float:
         """Calculate parsing confidence based on extracted content."""
