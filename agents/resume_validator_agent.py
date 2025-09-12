@@ -17,8 +17,6 @@ from typing_extensions import TypedDict
 from tools.resume_validator import (
     ResumeValidator,
     ResumeValidationError,
-    ValidationReport,
-    ValidationStatus,
 )
 from tools.evidence_indexer import EvidenceIndexer, EvidenceIndexingError
 from src.schemas.core import TailoredBullet, Resume
@@ -480,12 +478,13 @@ class ResumeValidatorAgent:
                 "results_analysis_failed",
             ]
             
-            if any(status in state.get("status", "") for status in retryable_statuses):
+            current_status = state.get("status", "")
+            if any(status in current_status for status in retryable_statuses):
                 state["status"] = "retrying"
                 logger.info(f"Retrying validation (attempt {state['retry_count']})")
                 
                 # Adjust parameters for retry if needed
-                if "results_analysis_failed" in state.get("status", ""):
+                if "results_analysis_failed" in current_status:
                     # Lower thresholds slightly for retry
                     current_threshold = state.get("similarity_threshold", SIMILARITY_THRESHOLD)
                     state["similarity_threshold"] = max(0.7, current_threshold - 0.05)

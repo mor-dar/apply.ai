@@ -30,105 +30,109 @@ from src.schemas.core import (
 )
 
 
+@pytest.fixture
+def sample_job_posting():
+    """Create a sample JobPosting object for testing."""
+    return JobPosting(
+        title="Senior Software Engineer",
+        company="TechCorp",
+        location="San Francisco, CA",
+        text="We are looking for a senior software engineer with experience in Python, React, and microservices architecture. Must have 5+ years of experience.",
+        keywords=["python", "react", "microservices", "api", "javascript", "sql"],
+        requirements=[
+            Requirement(text="5+ years of software development experience", must_have=True),
+            Requirement(text="Experience with Python and React", must_have=True),
+            Requirement(text="Knowledge of microservices architecture", must_have=False),
+        ],
+    )
+
+
+@pytest.fixture
+def sample_resume():
+    """Create a sample Resume object for testing."""
+    bullets = [
+        ResumeBullet(
+            text="Developed scalable web applications using Python and Django framework",
+            section="Experience",
+            start_offset=100,
+            end_offset=165,
+        ),
+        ResumeBullet(
+            text="Built responsive frontend interfaces with React and JavaScript",
+            section="Experience",
+            start_offset=166,
+            end_offset=225,
+        ),
+        ResumeBullet(
+            text="Designed RESTful APIs for microservices communication",
+            section="Experience",
+            start_offset=226,
+            end_offset=280,
+        ),
+        ResumeBullet(
+            text="Led team of 3 developers on e-commerce platform project",
+            section="Experience",
+            start_offset=281,
+            end_offset=340,
+        ),
+    ]
+    
+    sections = [
+        ResumeSection(
+            name="Experience",
+            bullets=bullets,
+            start_offset=50,
+            end_offset=340,
+        ),
+    ]
+    
+    return Resume(
+        raw_text="Sample resume text with experience in Python, React, and web development.",
+        bullets=bullets,
+        skills=["Python", "React", "JavaScript", "Django", "SQL", "Git"],
+        sections=sections,
+    )
+
+
+@pytest.fixture
+def mock_evidence_indexer():
+    """Create mock EvidenceIndexer for testing."""
+    mock_indexer = Mock(spec=EvidenceIndexer)
+    mock_indexer.similarity_threshold = 0.8
+    mock_indexer.find_evidence.return_value = []
+    return mock_indexer
+
+
+@pytest.fixture
+def generator(mock_evidence_indexer):
+    """Create ResumeGenerator instance with mocked dependencies."""
+    with patch('tools.resume_generator.spacy.load') as mock_spacy, \
+         patch('tools.resume_generator.TfidfVectorizer') as mock_tfidf:
+        
+        # Mock spaCy
+        mock_nlp = Mock()
+        mock_doc = Mock()
+        mock_doc.similarity.return_value = 0.85
+        mock_doc.ents = []
+        mock_doc.noun_chunks = []
+        mock_doc.__iter__ = Mock(return_value=iter([Mock(pos_="VERB", lemma_="developed", text="developed")]))
+        mock_nlp.return_value = mock_doc
+        mock_spacy.return_value = mock_nlp
+        
+        # Mock TF-IDF
+        mock_vectorizer = Mock()
+        mock_vectorizer.fit_transform.return_value.toarray.return_value = [[0.5, 0.3, 0.2]]
+        mock_vectorizer.get_feature_names_out.return_value = ["python", "react", "microservices"]
+        mock_tfidf.return_value = mock_vectorizer
+        
+        return ResumeGenerator(
+            similarity_threshold=0.8,
+            evidence_indexer=mock_evidence_indexer,
+        )
+
+
 class TestResumeGenerator:
     """Test suite for ResumeGenerator tool."""
-    
-    @pytest.fixture
-    def sample_job_posting(self):
-        """Create a sample JobPosting object for testing."""
-        return JobPosting(
-            title="Senior Software Engineer",
-            company="TechCorp",
-            location="San Francisco, CA",
-            text="We are looking for a senior software engineer with experience in Python, React, and microservices architecture. Must have 5+ years of experience.",
-            keywords=["python", "react", "microservices", "api", "javascript", "sql"],
-            requirements=[
-                Requirement(text="5+ years of software development experience", must_have=True),
-                Requirement(text="Experience with Python and React", must_have=True),
-                Requirement(text="Knowledge of microservices architecture", must_have=False),
-            ],
-        )
-    
-    @pytest.fixture
-    def sample_resume(self):
-        """Create a sample Resume object for testing."""
-        bullets = [
-            ResumeBullet(
-                text="Developed scalable web applications using Python and Django framework",
-                section="Experience",
-                start_offset=100,
-                end_offset=165,
-            ),
-            ResumeBullet(
-                text="Built responsive frontend interfaces with React and JavaScript",
-                section="Experience",
-                start_offset=166,
-                end_offset=225,
-            ),
-            ResumeBullet(
-                text="Designed RESTful APIs for microservices communication",
-                section="Experience",
-                start_offset=226,
-                end_offset=280,
-            ),
-            ResumeBullet(
-                text="Led team of 3 developers on e-commerce platform project",
-                section="Experience",
-                start_offset=281,
-                end_offset=340,
-            ),
-        ]
-        
-        sections = [
-            ResumeSection(
-                name="Experience",
-                bullets=bullets,
-                start_offset=50,
-                end_offset=340,
-            ),
-        ]
-        
-        return Resume(
-            raw_text="Sample resume text with experience in Python, React, and web development.",
-            bullets=bullets,
-            skills=["Python", "React", "JavaScript", "Django", "SQL", "Git"],
-            sections=sections,
-        )
-    
-    @pytest.fixture
-    def mock_evidence_indexer(self):
-        """Create mock EvidenceIndexer for testing."""
-        mock_indexer = Mock(spec=EvidenceIndexer)
-        mock_indexer.similarity_threshold = 0.8
-        mock_indexer.find_evidence.return_value = []
-        return mock_indexer
-    
-    @pytest.fixture
-    def generator(self, mock_evidence_indexer):
-        """Create ResumeGenerator instance with mocked dependencies."""
-        with patch('tools.resume_generator.spacy.load') as mock_spacy, \
-             patch('tools.resume_generator.TfidfVectorizer') as mock_tfidf:
-            
-            # Mock spaCy
-            mock_nlp = Mock()
-            mock_doc = Mock()
-            mock_doc.similarity.return_value = 0.85
-            mock_doc.ents = []
-            mock_doc.noun_chunks = []
-            mock_doc.__iter__ = Mock(return_value=iter([Mock(pos_="VERB", lemma_="developed", text="developed")]))
-            mock_nlp.return_value = mock_doc
-            mock_spacy.return_value = mock_nlp
-            
-            # Mock TF-IDF
-            mock_vectorizer = Mock()
-            mock_vectorizer.fit_transform.return_value.toarray.return_value = [[0.5, 0.3, 0.2]]
-            mock_vectorizer.get_feature_names_out.return_value = ["python", "react", "microservices"]
-            mock_tfidf.return_value = mock_vectorizer
-            
-            return ResumeGenerator(
-                similarity_threshold=0.8,
-                evidence_indexer=mock_evidence_indexer,
-            )
     
     def test_init_default_parameters(self):
         """Test ResumeGenerator initialization with default parameters."""
@@ -332,6 +336,20 @@ class TestResumeGenerator:
             start_offset=0,
             end_offset=40,
         )
+        
+        # Mock nlp to support subscriptable operations used in _optimize_bullet_structure
+        mock_token = Mock()
+        mock_token.pos_ = "VERB"
+        mock_token.lemma_ = "developed"
+        mock_token.text = "Developed"
+        
+        mock_doc = Mock()
+        mock_doc.__bool__ = Mock(return_value=True)
+        mock_doc.__len__ = Mock(return_value=1)
+        mock_doc.__getitem__ = Mock(return_value=mock_token)
+        mock_doc.__iter__ = Mock(return_value=iter([mock_token]))
+        
+        generator.nlp.return_value = mock_doc
         
         with patch.object(generator, '_calculate_text_similarity', return_value=0.85):
             result = generator._rewrite_bullet_for_keyword(original_bullet, "microservices", 0.9)
@@ -588,7 +606,7 @@ class TestEdgeCases:
     
     def test_empty_resume(self, generator):
         """Test handling of empty resume."""
-        resume = Resume(raw_text="", bullets=[], skills=[], sections=[])
+        resume = Resume(raw_text="Empty resume", bullets=[], skills=[], sections=[])
         
         mappings = generator.map_keywords_to_bullets(["test"], resume)
         assert mappings == []

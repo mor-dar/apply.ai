@@ -11,7 +11,7 @@ within the LangGraph workflow.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Set, Tuple
+from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -20,7 +20,6 @@ import numpy as np
 from src.schemas.core import (
     TailoredBullet,
     Resume,
-    ResumeBullet,
 )
 from tools.evidence_indexer import EvidenceIndexer, EvidenceMatch, EvidenceIndexingError
 

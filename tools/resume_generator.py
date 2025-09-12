@@ -11,13 +11,11 @@ the LangGraph workflow.
 
 import re
 import logging
-from typing import List, Dict, Any, Optional, Set, Tuple
+from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
-from collections import defaultdict
 
 import spacy
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 from src.schemas.core import (
@@ -25,9 +23,8 @@ from src.schemas.core import (
     Resume,
     ResumeBullet,
     TailoredBullet,
-    Requirement,
 )
-from tools.evidence_indexer import EvidenceIndexer, EvidenceMatch
+from tools.evidence_indexer import EvidenceIndexer
 
 
 logger = logging.getLogger(__name__)

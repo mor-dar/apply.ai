@@ -14,9 +14,9 @@ from langgraph.graph import StateGraph, END, START
 from langgraph.checkpoint.memory import MemorySaver
 from typing_extensions import TypedDict
 
-from tools.resume_generator import ResumeGenerator, ResumeGenerationError, GenerationMetrics
+from tools.resume_generator import ResumeGenerator, ResumeGenerationError
 from tools.evidence_indexer import EvidenceIndexer
-from src.schemas.core import JobPosting, Resume, TailoredBullet
+from src.schemas.core import JobPosting, Resume
 
 
 # Configure logging
@@ -434,12 +434,13 @@ class ResumeGeneratorAgent:
                 "results_validation_failed",
             ]
             
-            if any(status in state.get("status", "") for status in retryable_statuses):
+            current_status = state.get("status", "")
+            if any(status in current_status for status in retryable_statuses):
                 state["status"] = "retrying"
                 logger.info(f"Retrying generation (attempt {state['retry_count']})")
                 
                 # Adjust parameters for retry if validation failed
-                if "results_validation_failed" in state.get("status", ""):
+                if "results_validation_failed" in current_status:
                     # Lower similarity threshold slightly for retry
                     current_threshold = state.get("similarity_threshold", SIMILARITY_THRESHOLD)
                     state["similarity_threshold"] = max(0.7, current_threshold - 0.05)

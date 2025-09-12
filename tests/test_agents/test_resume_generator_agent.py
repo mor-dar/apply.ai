@@ -22,6 +22,101 @@ from tools.evidence_indexer import EvidenceIndexer
 from src.schemas.core import JobPosting, Resume, ResumeBullet, TailoredBullet, Requirement
 
 
+@pytest.fixture
+def sample_job_posting():
+    """Create sample JobPosting for testing."""
+    return JobPosting(
+        title="Senior Software Engineer",
+        company="TechCorp",
+        text="We are looking for a senior software engineer with Python and React experience.",
+        keywords=["python", "react", "microservices", "api"],
+        requirements=[
+            Requirement(text="5+ years of Python development", must_have=True),
+            Requirement(text="Experience with React", must_have=True),
+        ],
+    )
+
+
+@pytest.fixture
+def sample_resume():
+    """Create sample Resume for testing."""
+    bullets = [
+        ResumeBullet(
+            text="Developed Python applications for web services",
+            section="Experience", 
+            start_offset=50,
+            end_offset=95,
+        ),
+        ResumeBullet(
+            text="Built React components for user interfaces",
+            section="Experience",
+            start_offset=96,
+            end_offset=140,
+        ),
+    ]
+    
+    return Resume(
+        raw_text="Sample resume with Python and React experience",
+        bullets=bullets,
+        skills=["Python", "React", "JavaScript", "API"],
+        sections=[],
+    )
+
+
+@pytest.fixture
+def sample_tailored_bullets():
+    """Create sample tailored bullets for testing."""
+    return [
+        TailoredBullet(
+            text="Enhanced Python development with microservices architecture",
+            similarity_score=0.9,
+            evidence_spans=["Developed Python applications"],
+            jd_keywords_covered=["python", "microservices"],
+        ),
+        TailoredBullet(
+            text="Built responsive React interfaces with API integration",
+            similarity_score=0.85,
+            evidence_spans=["Built React components"],
+            jd_keywords_covered=["react", "api"],
+        ),
+    ]
+
+
+@pytest.fixture
+def mock_evidence_indexer():
+    """Create mock EvidenceIndexer."""
+    mock_indexer = Mock(spec=EvidenceIndexer)
+    mock_indexer.similarity_threshold = 0.8
+    return mock_indexer
+
+
+@pytest.fixture
+def mock_generator():
+    """Create mock ResumeGenerator."""
+    mock_gen = Mock(spec=ResumeGenerator)
+    mock_gen.extract_keywords_from_job.return_value = ["python", "react"]
+    return mock_gen
+
+
+@pytest.fixture
+def agent(mock_evidence_indexer):
+    """Create ResumeGeneratorAgent instance."""
+    with patch('agents.resume_generator_agent.ResumeGenerator') as mock_gen_class:
+        # Create a properly mocked generator
+        mock_generator = Mock()
+        mock_generator.extract_keywords_from_job.return_value = ["python", "react", "microservices", "api"]
+        mock_generator.generate_resume_bullets.return_value = ([], Mock(), [])
+        mock_gen_class.return_value = mock_generator
+        
+        agent = ResumeGeneratorAgent(
+            max_retries=2,
+            enable_checkpointing=False,
+            evidence_indexer=mock_evidence_indexer,
+        )
+        
+        return agent
+
+
 class TestResumeGeneratorAgent:
     """Test suite for ResumeGeneratorAgent."""
     
@@ -107,12 +202,19 @@ class TestResumeGeneratorAgent:
     def agent(self, mock_evidence_indexer):
         """Create ResumeGeneratorAgent instance."""
         with patch('agents.resume_generator_agent.ResumeGenerator') as mock_gen_class:
-            mock_gen_class.return_value = Mock()
-            return ResumeGeneratorAgent(
+            # Create a properly mocked generator
+            mock_generator = Mock()
+            mock_generator.extract_keywords_from_job.return_value = ["python", "react", "microservices", "api"]
+            mock_generator.generate_resume_bullets.return_value = ([], Mock(), [])
+            mock_gen_class.return_value = mock_generator
+            
+            agent = ResumeGeneratorAgent(
                 max_retries=2,
                 enable_checkpointing=False,
                 evidence_indexer=mock_evidence_indexer,
             )
+            
+            return agent
     
     def test_init_default_parameters(self):
         """Test agent initialization with default parameters."""
@@ -147,17 +249,45 @@ class TestResumeGeneratorAgent:
         # Mock the generator to return successful results
         mock_metrics = GenerationMetrics(
             total_keywords=4,
-            covered_keywords=2,
-            total_bullets_generated=2,
-            bullets_above_threshold=2,
-            average_similarity_score=0.875,
-            keyword_coverage_percentage=50.0,
+            covered_keywords=3,
+            total_bullets_generated=6,  # Above MIN_BULLETS requirement
+            bullets_above_threshold=6,
+            average_similarity_score=0.9,  # Above threshold
+            keyword_coverage_percentage=75.0,  # Good coverage
         )
         
+        # Create more sample bullets to match the metrics
+        extended_bullets = sample_tailored_bullets + [
+            TailoredBullet(
+                text="Implemented automated testing procedures",
+                similarity_score=0.9,
+                evidence_spans=["Implemented testing"],
+                jd_keywords_covered=["testing"],
+            ),
+            TailoredBullet(
+                text="Collaborated with cross-functional teams",
+                similarity_score=0.9,
+                evidence_spans=["Collaborated with teams"],
+                jd_keywords_covered=["collaboration"],
+            ),
+            TailoredBullet(
+                text="Delivered high-quality software solutions",
+                similarity_score=0.9,
+                evidence_spans=["Delivered solutions"],
+                jd_keywords_covered=["quality"],
+            ),
+            TailoredBullet(
+                text="Optimized system performance",
+                similarity_score=0.9,
+                evidence_spans=["Optimized performance"],
+                jd_keywords_covered=["performance"],
+            ),
+        ]
+        
         agent.generator.generate_resume_bullets.return_value = (
-            sample_tailored_bullets,
+            extended_bullets,
             mock_metrics,
-            [{"original_text": "test", "tailored_text": "test"}],
+            [{"original_text": "test", "tailored_text": "test"}] * 6,
         )
         
         result = agent.generate_tailored_bullets(
@@ -690,17 +820,19 @@ class TestWorkflowIntegration:
         with patch('agents.resume_generator_agent.ResumeGenerator') as mock_gen_class:
             mock_generator = Mock()
             mock_generator.extract_keywords_from_job.return_value = ["python", "react"]
+            # Create enough mock bullets to pass validation
+            mock_bullets = [Mock(model_dump=Mock(return_value={"text": f"test bullet {i}"})) for i in range(6)]
             mock_generator.generate_resume_bullets.return_value = (
-                [Mock(model_dump=Mock(return_value={"text": "test"}))],
+                mock_bullets,
                 Mock(
-                    total_keywords=2,
-                    covered_keywords=1,
-                    total_bullets_generated=1,
-                    bullets_above_threshold=1,
+                    total_keywords=4,
+                    covered_keywords=3,
+                    total_bullets_generated=6,  # Above MIN_BULLETS=5
+                    bullets_above_threshold=6,
                     average_similarity_score=0.9,
-                    keyword_coverage_percentage=50.0,
+                    keyword_coverage_percentage=75.0,  # Good coverage
                 ),
-                [{"original": "test", "tailored": "enhanced test"}],
+                [{"original": f"test {i}", "tailored": f"enhanced test {i}"} for i in range(6)],
             )
             mock_gen_class.return_value = mock_generator
             

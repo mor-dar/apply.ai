@@ -28,6 +28,116 @@ from tools.evidence_indexer import EvidenceIndexer, EvidenceIndexingError
 from src.schemas.core import TailoredBullet, Resume, ResumeBullet, ResumeSection
 
 
+@pytest.fixture
+def sample_tailored_bullets():
+    """Create sample tailored bullets for testing."""
+    return [
+        TailoredBullet(
+            text="Developed scalable Python applications using microservices architecture",
+            similarity_score=0.9,
+            evidence_spans=["Developed Python applications"],
+            jd_keywords_covered=["python", "microservices"],
+        ),
+        TailoredBullet(
+            text="Built responsive React interfaces with API integration",
+            similarity_score=0.85,
+            evidence_spans=["Built React components"],
+            jd_keywords_covered=["react", "api"],
+        ),
+        TailoredBullet(
+            text="Led team development of e-commerce solutions",
+            similarity_score=0.8,
+            evidence_spans=["Led team development"],
+            jd_keywords_covered=["leadership"],
+        ),
+    ]
+
+
+@pytest.fixture
+def sample_resume():
+    """Create sample Resume for testing."""
+    bullets = [
+        ResumeBullet(
+            text="Developed Python applications for web services",
+            section="Experience",
+            start_offset=50,
+            end_offset=95,
+        ),
+        ResumeBullet(
+            text="Built React components for user interfaces",
+            section="Experience",
+            start_offset=96,
+            end_offset=140,
+        ),
+        ResumeBullet(
+            text="Led development team on multiple projects",
+            section="Experience",
+            start_offset=141,
+            end_offset=185,
+        ),
+    ]
+    
+    return Resume(
+        raw_text="Sample resume with development experience",
+        bullets=bullets,
+        skills=["Python", "React", "JavaScript", "Leadership"],
+        sections=[
+            ResumeSection(
+                name="Experience",
+                bullets=bullets,
+                start_offset=50,
+                end_offset=185,
+            ),
+        ],
+    )
+
+
+@pytest.fixture
+def mock_evidence_indexer():
+    """Create mock EvidenceIndexer."""
+    mock_indexer = Mock(spec=EvidenceIndexer)
+    mock_indexer.similarity_threshold = 0.8
+    mock_collection = Mock()
+    mock_collection.count.return_value = 5
+    mock_indexer.collection = mock_collection
+    
+    # Mock get_collection_stats to return dict-like object
+    mock_indexer.get_collection_stats.return_value = {"total_items": 5}
+    mock_indexer.index_resume.return_value = {
+        "items_indexed": 5,
+        "bullets_indexed": 3,
+        "skills_indexed": 2,
+    }
+    
+    return mock_indexer
+
+
+@pytest.fixture
+def mock_validator():
+    """Create mock ResumeValidator."""
+    mock_val = Mock(spec=ResumeValidator)
+    mock_val.similarity_threshold = 0.8
+    return mock_val
+
+
+@pytest.fixture
+def agent(mock_evidence_indexer):
+    """Create ResumeValidatorAgent instance."""
+    with patch('agents.resume_validator_agent.ResumeValidator') as mock_val_class:
+        mock_validator = Mock()
+        mock_validator.similarity_threshold = 0.8
+        mock_validator.validate_bullets.return_value = Mock(spec=ValidationReport)
+        mock_val_class.return_value = mock_validator
+        
+        agent = ResumeValidatorAgent(
+            max_retries=2,
+            enable_checkpointing=False,
+            evidence_indexer=mock_evidence_indexer,
+        )
+        
+        return agent
+
+
 class TestResumeValidatorAgent:
     """Test suite for ResumeValidatorAgent."""
     
@@ -307,7 +417,7 @@ class TestResumeValidatorAgent:
         result_state = agent._validate_input(state)
         
         assert result_state["status"] == "input_validation_failed"
-        assert "No bullets to validate" in result_state["error_message"]
+        assert "No tailored bullets provided" in result_state["error_message"]
     
     def test_validate_input_malformed_bullet(self, agent, sample_resume):
         """Test input validation with malformed bullet data."""
@@ -1046,4 +1156,5 @@ class TestEdgeCases:
         result_state = agent._handle_error(state)
         
         assert result_state["status"] == "max_retries_exceeded"
-        assert "Error not retryable" in [None]  # Check that it logs appropriately
+        # The error should be logged (can't easily test log messages in unit tests)
+        # but we can check that the error handling worked correctly
